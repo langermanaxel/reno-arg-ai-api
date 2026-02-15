@@ -2,6 +2,7 @@ import uuid
 import enum
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, Enum, ForeignKey, Text, Float, Boolean
+from sqlalchemy import Integer, Date, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -59,3 +60,19 @@ class ObservacionGenerada(Base):
     nivel = Column(String) # INFORMATIVO, ATENCION, CRITICO
     
     resultado = relationship("ResultadoAnalisis", back_populates="observaciones")
+
+class DatoProyecto(Base):
+    __tablename__ = "dato_proyecto"
+    id = Column(Integer, primary_key=True, index=True)
+    analisis_id = Column(UUID(as_uuid=True), ForeignKey("analisis.id"))
+    codigo = Column(String)
+    nombre = Column(String)
+    responsable_tecnico = Column(String)
+
+class DatoEtapa(Base):
+    __tablename__ = "dato_etapa"
+    id = Column(Integer, primary_key=True, index=True)
+    analisis_id = Column(UUID(as_uuid=True), ForeignKey("analisis.id"))
+    nombre = Column(String)
+    estado = Column(String)
+    avance_estimado = Column(Integer)

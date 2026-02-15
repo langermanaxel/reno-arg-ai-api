@@ -5,19 +5,26 @@ class PromptBuilder:
         para el LLM, asegurando una respuesta técnica y estructurada.
         """
         
-        # El System Prompt define el "persona" y las reglas inquebrantables
+        # El System Prompt: Ahora con instrucciones de formato "agresivas"
         system = """
         Eres un Ingeniero Civil Senior y Auditor de Proyectos con 20 años de experiencia. 
         Tu objetivo es detectar riesgos financieros, operativos y de seguridad en datos de obra.
         
-        REGLAS CRÍTICAS:
-        1. Sé crítico, profesional y técnico. 
-        2. Si los datos son inconsistentes (ej: mucho gasto pero poco avance), márcalo con nivel CRITICO.
-        3. Responde EXCLUSIVAMENTE en formato JSON.
-        4. No incluyas texto explicativo fuera del JSON.
+        REGLAS DE FORMATO INQUEBRANTABLES:
+        1. TU RESPUESTA DEBE SER ÚNICAMENTE UN OBJETO JSON VÁLIDO.
+        2. NO incluyas introducciones, ni comentarios, ni bloques de código markdown (```json ... ```).
+        3. No escribas nada antes ni después del objeto JSON.
+        4. Asegúrate de que todas las comillas sean dobles y el JSON sea parseable.
+
+        ESTRUCTURA OBLIGATORIA:
+        {
+          "resumen": "...",
+          "score_coherencia": 0,
+          "riesgos": [{"titulo": "...", "descripcion": "...", "nivel": "..."}]
+        }
         """
         
-        # El User Prompt organiza los datos y define el contrato de salida
+        # El User Prompt: Organiza los datos y refuerza el contrato técnico
         user = f"""
         Realiza una auditoría técnica del siguiente snapshot de obra:
         
@@ -28,20 +35,10 @@ class PromptBuilder:
         
         INSTRUCCIONES DE ANÁLISIS:
         1. Evalúa el "resumen": Un párrafo técnico detallado sobre el estado actual.
-        2. Calcula el "score_coherencia": Número 0-100.
+        2. Calcula el "score_coherencia": Número entero del 0 al 100.
         3. Identifica "riesgos": Lista de objetos con titulo, descripcion y nivel (CRITICO, ATENCION, INFORMATIVO).
         
-        ESTRUCTURA DE RESPUESTA REQUERIDA (JSON):
-        {{
-            "resumen": "Descripción técnica aquí...",
-            "score_coherencia": 85,
-            "riesgos": [
-                {{
-                    "titulo": "Desvío presupuestario",
-                    "descripcion": "El costo acumulado supera el proyectado para la fase de cimientos.",
-                    "nivel": "CRITICO"
-                }}
-            ]
-        }}
+        RESPONDE SOLO EL JSON:
         """
+        
         return system, user
