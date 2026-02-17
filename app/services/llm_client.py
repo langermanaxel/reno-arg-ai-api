@@ -2,27 +2,37 @@ import httpx
 import os
 import asyncio
 from dotenv import load_dotenv
+from app.utils.logger import logger
 
 load_dotenv()
 
 class LLMClient:
     def __init__(self):
-        self.api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        # Cargamos la key y limpiamos espacios o comillas accidentales
+        raw_key = os.getenv("OPENROUTER_API_KEY", "")
+        self.api_key = raw_key.replace('"', '').replace("'", "").strip()
+    
         self.url = "https://openrouter.ai/api/v1/chat/completions"
-        # Lista de modelos por orden de prioridad (del mejor al más estable)
+    
+        if not self.api_key:
+            logger.error("❌ CRÍTICO: No se detectó OPENROUTER_API_KEY. Revisa tu archivo .env")
+        else:
+            # Esto te confirmará en consola que la key se cargó (ofuscada por seguridad)
+            logger.info(f"🔑 API Key cargada: {self.api_key[:6]}...{self.api_key[-4:]}")
+
         self.modelos_fallback = [
-            "openrouter/free",              # El automático por excelencia
-            "stepfun/step-3.5-flash:free",  # Muy rápido y estable
-            "upstage/solar-pro-3:free",     # Excelente razonamiento
-            "arcee-ai/trinity-large-preview:free",
-            "liquid/lfm-2.5-1.2b-thinking:free"
+            "google/gemini-2.0-flash-lite-preview-02-05:free", # Agregamos este que es más estable
+            "openrouter/free",
+            "stepfun/step-3.5-flash:free",
+            "upstage/solar-pro-3:free",
+            "arcee-ai/trinity-large-preview:free"
         ]
 
     async def enviar_prompt(self, system_prompt: str, user_prompt: str):
         headers = {
             "Authorization": f"Bearer {self.api_key}",
-            "HTTP-Referer": "http://localhost:8000",
-            "X-Title": "Constructor AI",
+            "HTTP-Referer": "https://github.com/langermanaxel/my_ai_api", # Usa tu URL de repo o localhost
+            "X-Title": "Constructor AI Analisis",
             "Content-Type": "application/json"
         }
 
