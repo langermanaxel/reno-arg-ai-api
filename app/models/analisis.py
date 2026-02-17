@@ -152,3 +152,16 @@ class RespuestaLLM(Base):
     recibida_at = Column(DateTime, default=datetime.utcnow)
 
     invocacion = relationship("InvocacionLLM", back_populates="respuesta")
+
+# --- NUEVA TABLA: SEGURIDAD Y USUARIOS ---
+
+class User(Base):
+    __tablename__ = "usuarios"
+
+    # Usamos UUID por consistencia con el resto de tu arquitectura
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    username = Column(String, unique=True, index=True, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)  # El hash de passlib
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
