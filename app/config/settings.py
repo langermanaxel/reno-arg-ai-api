@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     # --- Security & DB ---
     DATABASE_URL: str
     OPENROUTER_API_KEY: str
-    OPENROUTER_BASE_URL: str #= "https://openrouter.ai/api/v1"
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     
     # --- CORS ---
     CORS_ORIGINS: List[str] = ["*"]
