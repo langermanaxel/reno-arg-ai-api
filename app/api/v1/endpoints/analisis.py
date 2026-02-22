@@ -1,10 +1,14 @@
-import json, re
-from fastapi import APIRouter, Depends, HTTPException
+import json
+import re
+import logging
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime
+from sqlalchemy import text
 
 from app.api.dependencies import get_db
-from app.db.base import Base, engine # Solo para el reset-db
+from app.config.settings import settings
+from app.db.base import Base # Necesario para reset-db
 from app.models.analisis import (
     Analisis, SnapshotRecibido, EstadoAnalisis, 
     ResultadoAnalisis, ObservacionGenerada, 
@@ -15,13 +19,14 @@ from app.schemas.snapshot import SnapshotCreate
 from app.services.llm_client import LLMClient
 from app.services.prompt_builder import PromptBuilder
 from app.services.webhook_client import WebhookClient
-import logging # Usamos el logging estándar configurado en core
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.post("/iniciar", tags=["Procesamiento"])
+# --- ENDPOINTS DE NEGOCIO ---
+
+@router.post("/iniciar")
 async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(get_db)):
     """Inicia el proceso de persistencia de datos y análisis con IA."""
     logger.info(f"📥 Recibida solicitud para proyecto: {snapshot_in.proyecto_codigo}")
@@ -44,7 +49,7 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
 
         datos_json = snapshot_in.datos
         
-        # Mapeos de Snapshot (Proyecto, Etapas, Avances, Seguridad)
+        # Mapeo de Proyecto
         db.add(DatoProyecto(
             snapshot_id=nuevo_snapshot.id,
             codigo=datos_json.get("proyecto", {}).get("codigo"),
@@ -52,6 +57,7 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
             responsable_tecnico=datos_json.get("proyecto", {}).get("responsable_tecnico")
         ))
 
+        # Mapeo de Etapas
         for etapa in datos_json.get("etapas", []):
             if isinstance(etapa, dict):
                 db.add(DatoEtapa(
@@ -61,11 +67,14 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
                     avance_estimado=etapa.get("avance_estimado")
                 ))
 
+        # Mapeo de Avances
         for avance in datos_json.get("registros_avance", []):
             if isinstance(avance, dict):
                 fecha_obj = None
-                try: fecha_obj = datetime.strptime(avance.get("fecha"), "%Y-%m-%d").date()
-                except: pass
+                try: 
+                    fecha_obj = datetime.strptime(avance.get("fecha"), "%Y-%m-%d").date()
+                except: 
+                    pass
                 db.add(DatoAvance(
                     snapshot_id=nuevo_snapshot.id,
                     fecha_registro=fecha_obj,
@@ -76,29 +85,29 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
                     oficios_activos=avance.get("oficios_activos", [])
                 ))
 
+        # Mapeo de Seguridad
         lista_seguridad = datos_json.get("medidas_seguridad", [])
         if lista_seguridad:
             total = len(lista_seguridad)
             cumple = sum(1 for m in lista_seguridad if isinstance(m, dict) and m.get("cumple") is True)
             db.add(DatoSeguridad(
                 snapshot_id=nuevo_snapshot.id,
-                fecha_registro=datetime.now().date(),
+                fecha_registro=datetime.now(timezone.utc).date(),
                 medidas_implementadas=lista_seguridad,
                 total_medidas_chequeadas=total,
                 cumple_todas=(total == cumple)
             ))
 
         db.commit()
-        logger.info(f"💾 Datos guardados exitosamente")
 
-        # 2. PROCESAMIENTO CON IA Y AUDITORÍA
+        # 2. PROCESAMIENTO CON IA
         prompt_builder = PromptBuilder()
         system_p, user_p = prompt_builder.construir_instrucciones(snapshot_in.model_dump())
         
         invocacion = InvocacionLLM(
             analisis_id=nuevo_analisis.id,
             modelo_usado="gpt-4o-mini",
-            invocado_at=datetime.utcnow()
+            invocado_at=datetime.now(timezone.utc)
         )
         db.add(invocacion)
         db.flush()
@@ -106,9 +115,9 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
         db.add(PromptGenerado(invocacion_id=invocacion.id, system_prompt=system_p, user_prompt=user_p))
 
         llm_client = LLMClient()
-        start_time = datetime.utcnow()
+        start_time = datetime.now(timezone.utc)
         respuesta_raw = await llm_client.enviar_prompt(system_p, user_p)
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
 
         invocacion.duracion_ms = int((end_time - start_time).total_seconds() * 1000)
         
@@ -122,6 +131,7 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
         invocacion.tokens_prompt = respuesta_raw.get("usage", {}).get("prompt_tokens")
         invocacion.tokens_respuesta = respuesta_raw.get("usage", {}).get("completion_tokens")
 
+        # Parseo de respuesta JSON de la IA
         contenido_ia = {}
         try:
             contenido_ia = json.loads(string_contenido)
@@ -129,9 +139,13 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
             match = re.search(r"(\{.*\})", string_contenido, re.DOTALL)
             if match: contenido_ia = json.loads(match.group(1))
 
-        db.add(RespuestaLLM(invocacion_id=invocacion.id, respuesta_raw=string_contenido, respuesta_parseada=contenido_ia))
+        db.add(RespuestaLLM(
+            invocacion_id=invocacion.id, 
+            respuesta_raw=string_contenido, 
+            respuesta_parseada=contenido_ia
+        ))
 
-        # 3. RESULTADOS DE NEGOCIO
+        # 3. GUARDADO DE RESULTADOS FINALES
         resultado = ResultadoAnalisis(
             analisis_id=nuevo_analisis.id,
             resumen_general=contenido_ia.get('resumen'),
@@ -152,6 +166,7 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
         nuevo_analisis.estado = EstadoAnalisis.COMPLETADO
         db.commit()
         
+        # Notificación externa
         webhook = WebhookClient()
         await webhook.notificar_finalizacion(nuevo_analisis.id, nuevo_analisis.proyecto_codigo, nuevo_analisis.estado)
 
@@ -161,10 +176,10 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
         db.rollback() 
         nuevo_analisis.estado = EstadoAnalisis.ERROR
         db.commit()
-        logger.error(f"❌ Error: {str(e)}")
+        logger.error(f"❌ Error en proceso de análisis: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/detalle/{analisis_id}", tags=["Consultas"])
+@router.get("/detalle/{analisis_id}")
 async def obtener_analisis_completo(analisis_id: str, db: Session = Depends(get_db)):
     """Obtiene la radiografía completa de un análisis y su auditoría."""
     analisis = db.query(Analisis).options(
@@ -175,25 +190,56 @@ async def obtener_analisis_completo(analisis_id: str, db: Session = Depends(get_
     ).filter(Analisis.id == analisis_id).first()
 
     if not analisis:
-        raise HTTPException(status_code=404, detail="No encontrado")
+        raise HTTPException(status_code=404, detail="Análisis no encontrado")
 
     return {
         "id": analisis.id,
         "estado": analisis.estado,
         "datos_obra": {
             "proyecto": analisis.snapshot.proyecto[0] if analisis.snapshot and analisis.snapshot.proyecto else None,
-            "etapas": len(analisis.snapshot.etapas) if analisis.snapshot else 0
+            "etapas_registradas": len(analisis.snapshot.etapas) if analisis.snapshot else 0
         },
-        "auditoria": [
-            {"modelo": i.modelo_usado, "tokens": (i.tokens_prompt or 0) + (i.tokens_respuesta or 0)} 
+        "auditoria_ia": [
+            {
+                "modelo": i.modelo_usado, 
+                "exitoso": i.exitosa,
+                "latencia_ms": i.duracion_ms,
+                "total_tokens": (i.tokens_prompt or 0) + (i.tokens_respuesta or 0)
+            } 
             for i in analisis.invocaciones
         ],
-        "resultado": analisis.resultado
+        "resultado_negocio": analisis.resultado
     }
 
-@router.post("/reset-db", tags=["Mantenimiento"])
-def reset_database():
-    """Limpia y recrea la base de datos."""
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    return {"mensaje": "Base de datos reseteada"}
+# --- ENDPOINTS DE MANTENIMIENTO (PROTEGIDOS) ---
+
+@router.post("/reset-db")
+async def reset_database(
+    x_admin_token: str = Header(None), 
+    db: Session = Depends(get_db)
+):
+    """
+    ⚠️ PELIGRO: Borra y recrea toda la base de datos.
+    Solo disponible en desarrollo y con token válido.
+    """
+    if settings.ENV != "development":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operación no permitida en este entorno."
+        )
+
+    if x_admin_token != settings.ADMIN_SECRET_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token de administración inválido."
+        )
+
+    try:
+        logger.warning("💣 Iniciando reset total de base de datos solicitado por administrador.")
+        engine_db = db.get_bind()
+        Base.metadata.drop_all(bind=engine_db)
+        Base.metadata.create_all(bind=engine_db)
+        return {"status": "success", "message": "Base de datos reseteada correctamente."}
+    except Exception as e:
+        logger.error(f"❌ Fallo crítico en reset-db: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al recrear esquemas.")

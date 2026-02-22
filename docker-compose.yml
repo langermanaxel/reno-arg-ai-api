@@ -12,7 +12,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      # Este comando verifica que Postgres acepte conexiones antes de marcarlo como 'healthy'
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-ai_analisis_db}"]
       interval: 5s
       timeout: 5s
@@ -27,14 +26,20 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Usamos el nombre del servicio 'db' en lugar de localhost
       - DATABASE_URL=postgresql://${POSTGRES_USER:-admin}:${POSTGRES_PASSWORD:-admin123}@db:5432/${POSTGRES_DB:-ai_analisis_db}
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
     depends_on:
       db:
-        condition: service_healthy # <--- CRÍTICO: Espera al healthcheck de arriba
+        condition: service_healthy
     env_file:
       - .env
+    healthcheck:
+      # Llama al endpoint que acabamos de mejorar
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s # Le damos tiempo a la API para iniciar antes de fallar el test
     networks:
       - ai_network
 

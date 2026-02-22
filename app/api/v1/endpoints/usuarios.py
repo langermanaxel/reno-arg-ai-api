@@ -7,7 +7,7 @@ from app.core.security import get_password_hash
 
 router = APIRouter()
 
-@router.post("/register", response_model=UserOut, tags=["Usuarios"])
+@router.post("/register", response_model=UserOut)
 def registrar_usuario(user_in: UserCreate, db: Session = Depends(get_db)):
     # 1. Verificar si ya existe
     user_db = db.query(User).filter(User.email == user_in.email).first()
