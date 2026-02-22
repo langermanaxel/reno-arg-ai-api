@@ -31,6 +31,7 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
     """Inicia el proceso de persistencia de datos y análisis con IA."""
     logger.info(f"📥 Recibida solicitud para proyecto: {snapshot_in.proyecto_codigo}")
     
+    # 0. CREACIÓN DEL REGISTRO PADRE
     nuevo_analisis = Analisis(
         proyecto_codigo=snapshot_in.proyecto_codigo, 
         estado=EstadoAnalisis.PROCESANDO
@@ -39,57 +40,67 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
     db.flush() 
 
     try:
-        # 1. PERSISTENCIA DE DATOS ESTRUCTURADOS
+        # 1. NORMALIZACIÓN Y PERSISTENCIA DE DATOS ESTRUCTURADOS
+        # Aseguramos que datos_json sea siempre un dict, incluso si viene de Pydantic
+        datos_json = snapshot_in.datos
+        if not isinstance(datos_json, dict):
+            datos_json = datos_json.model_dump() if hasattr(datos_json, "model_dump") else dict(datos_json)
+
         nuevo_snapshot = SnapshotRecibido(
             analisis_id=nuevo_analisis.id,
-            payload_completo=json.dumps(snapshot_in.datos)
+            payload_completo=json.dumps(datos_json)
         )
         db.add(nuevo_snapshot)
         db.flush() 
 
-        datos_json = snapshot_in.datos
-        
-        # Mapeo de Proyecto
+        # --- Mapeo de Proyecto ---
+        proy_data = datos_json.get("proyecto", {})
         db.add(DatoProyecto(
             snapshot_id=nuevo_snapshot.id,
-            codigo=datos_json.get("proyecto", {}).get("codigo"),
-            nombre=datos_json.get("proyecto", {}).get("nombre"),
-            responsable_tecnico=datos_json.get("proyecto", {}).get("responsable_tecnico")
+            codigo=proy_data.get("codigo"),
+            nombre=proy_data.get("nombre"),
+            responsable_tecnico=proy_data.get("responsable_tecnico")
         ))
 
-        # Mapeo de Etapas
+        # --- Mapeo de Etapas (Iteración robusta) ---
         for etapa in datos_json.get("etapas", []):
-            if isinstance(etapa, dict):
-                db.add(DatoEtapa(
-                    snapshot_id=nuevo_snapshot.id,
-                    nombre=etapa.get("nombre"),
-                    estado=etapa.get("estado"),
-                    avance_estimado=etapa.get("avance_estimado")
-                ))
+            # Soporta tanto dict como objetos
+            e = etapa if isinstance(etapa, dict) else etapa
+            db.add(DatoEtapa(
+                snapshot_id=nuevo_snapshot.id,
+                nombre=e.get("nombre") if isinstance(e, dict) else getattr(e, "nombre", None),
+                estado=e.get("estado") if isinstance(e, dict) else getattr(e, "estado", None),
+                avance_estimado=e.get("avance_estimado") if isinstance(e, dict) else getattr(e, "avance_estimado", 0)
+            ))
 
-        # Mapeo de Avances
+        # --- Mapeo de Avances (Con corrección de fechas) ---
         for avance in datos_json.get("registros_avance", []):
-            if isinstance(avance, dict):
-                fecha_obj = None
-                try: 
-                    fecha_obj = datetime.strptime(avance.get("fecha"), "%Y-%m-%d").date()
-                except: 
-                    pass
-                db.add(DatoAvance(
-                    snapshot_id=nuevo_snapshot.id,
-                    fecha_registro=fecha_obj,
-                    supervisor=avance.get("supervisor"),
-                    porcentaje_avance=avance.get("porcentaje_avance"),
-                    presenta_desvios=avance.get("presenta_desvios", False),
-                    tareas_ejecutadas=avance.get("tareas_ejecutadas", []),
-                    oficios_activos=avance.get("oficios_activos", [])
-                ))
+            a = avance if isinstance(avance, dict) else avance
+            fecha_str = a.get("fecha") if isinstance(a, dict) else getattr(a, "fecha", None)
+            fecha_obj = datetime.now(timezone.utc).date() # Fallback a hoy
+            
+            if fecha_str:
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
+                    try:
+                        fecha_obj = datetime.strptime(fecha_str, fmt).date()
+                        break
+                    except: continue
 
-        # Mapeo de Seguridad
+            db.add(DatoAvance(
+                snapshot_id=nuevo_snapshot.id,
+                fecha_registro=fecha_obj,
+                supervisor=a.get("supervisor") if isinstance(a, dict) else getattr(a, "supervisor", None),
+                porcentaje_avance=a.get("porcentaje_avance") if isinstance(a, dict) else getattr(a, "porcentaje_avance", 0),
+                presenta_desvios=a.get("presenta_desvios", False) if isinstance(a, dict) else getattr(a, "presenta_desvios", False),
+                tareas_ejecutadas=a.get("tareas_ejecutadas", []) if isinstance(a, dict) else getattr(a, "tareas_ejecutadas", []),
+                oficios_activos=a.get("oficios_activos", []) if isinstance(a, dict) else getattr(a, "oficios_activos", [])
+            ))
+
+        # --- Mapeo de Seguridad ---
         lista_seguridad = datos_json.get("medidas_seguridad", [])
         if lista_seguridad:
             total = len(lista_seguridad)
-            cumple = sum(1 for m in lista_seguridad if isinstance(m, dict) and m.get("cumple") is True)
+            cumple = sum(1 for m in lista_seguridad if (m.get("cumple") if isinstance(m, dict) else getattr(m, 'cumple', False)) is True)
             db.add(DatoSeguridad(
                 snapshot_id=nuevo_snapshot.id,
                 fecha_registro=datetime.now(timezone.utc).date(),
@@ -98,11 +109,13 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
                 cumple_todas=(total == cumple)
             ))
 
+        # Hacemos el primer commit: Los datos de la obra ya están seguros
         db.commit()
+        logger.info(f"✅ Datos de obra persistidos exitosamente para análisis {nuevo_analisis.id}")
 
         # 2. PROCESAMIENTO CON IA
         prompt_builder = PromptBuilder()
-        system_p, user_p = prompt_builder.construir_instrucciones(snapshot_in.model_dump())
+        system_p, user_p = prompt_builder.construir_instrucciones(datos_json)
         
         invocacion = InvocacionLLM(
             analisis_id=nuevo_analisis.id,
@@ -130,8 +143,9 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
         string_contenido = respuesta_raw['choices'][0]['message']['content']
         invocacion.tokens_prompt = respuesta_raw.get("usage", {}).get("prompt_tokens")
         invocacion.tokens_respuesta = respuesta_raw.get("usage", {}).get("completion_tokens")
+        invocacion.exitosa = True
 
-        # Parseo de respuesta JSON de la IA
+        # Parseo de respuesta JSON de la IA (con regex de seguridad)
         contenido_ia = {}
         try:
             contenido_ia = json.loads(string_contenido)
@@ -166,17 +180,21 @@ async def iniciar_analisis(snapshot_in: SnapshotCreate, db: Session = Depends(ge
         nuevo_analisis.estado = EstadoAnalisis.COMPLETADO
         db.commit()
         
-        # Notificación externa
-        webhook = WebhookClient()
-        await webhook.notificar_finalizacion(nuevo_analisis.id, nuevo_analisis.proyecto_codigo, nuevo_analisis.estado)
+        # 4. NOTIFICACIÓN (Webhook)
+        try:
+            webhook = WebhookClient()
+            await webhook.notificar_finalizacion(nuevo_analisis.id, nuevo_analisis.proyecto_codigo, nuevo_analisis.estado)
+        except Exception as e:
+            logger.warning(f"⚠️ Webhook fallido (no crítico): {e}")
 
         return {"analisis_id": nuevo_analisis.id, "resultado": contenido_ia}
 
     except Exception as e:
         db.rollback() 
         nuevo_analisis.estado = EstadoAnalisis.ERROR
+        db.add(nuevo_analisis) # Re-añadimos para poder actualizar el estado a ERROR
         db.commit()
-        logger.error(f"❌ Error en proceso de análisis: {str(e)}")
+        logger.error(f"❌ Error crítico en proceso de análisis: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/detalle/{analisis_id}")
