@@ -1,22 +1,22 @@
 import httpx
 import asyncio
-import json # <--- Nuevo para formatear logs
+import json
 from app.config.settings import settings
 from app.utils.logger import logger
+# --- IMPORTAMOS LA LISTA SINCRONIZADA ---
+try:
+    from app.config.models_registry import AVAILABLE_MODELS
+except ImportError:
+    # Fallback por si el archivo aún no se genera
+    AVAILABLE_MODELS = ["google/gemma-3-27b-it:free", "openrouter/free"]
 
 class LLMClient:
     def __init__(self):
         self.api_key = settings.OPENROUTER_API_KEY
         self.url = "https://openrouter.ai/api/v1/chat/completions"
-        logger.info(f"🚀 LLMClient iniciado. Proyecto: {settings.PROJECT_NAME}")
-
-        # Lista de modelos para rotar si uno falla
-        self.modelos_fallback = [
-            "google/gemma-3-27b-it:free",              # El más nuevo de Google en tu lista
-            "meta-llama/llama-3.3-70b-instruct:free",   # Súper potente
-            "mistralai/mistral-small-3.1-24b-instruct:free", # Muy equilibrado
-            "openrouter/free"                          # Tu red de seguridad
-        ]
+        # Usamos los primeros 5 modelos de la lista sincronizada para no hacer bucles infinitos
+        self.modelos_fallback = AVAILABLE_MODELS[:5] 
+        logger.info(f"🚀 LLMClient iniciado con {len(self.modelos_fallback)} modelos de fallback.")
 
     async def enviar_prompt(self, system_prompt: str, user_prompt: str):
         headers = {
@@ -45,7 +45,7 @@ class LLMClient:
                         self.url, 
                         headers=headers, 
                         json=payload, 
-                        timeout=45.0 # Un poco más de tiempo para modelos gratuitos
+                        timeout=45.0
                     )
                     
                     datos = response.json()
@@ -54,9 +54,8 @@ class LLMClient:
                         logger.info(f"✅ ÉXITO con modelo: {modelo}")
                         return datos
                     
-                    # Capturamos el error específico de la API
                     msg_error = datos.get("error", {}).get("message", "Sin mensaje de error")
-                    logger.warning(f"❌ FALLÓ {modelo} (Status {response.status_code}): {msg_error}")
+                    logger.warning(f"❌ FALLÓ {modelo}: {msg_error}")
                     intentos_fallidos.append(f"{modelo}: {msg_error}")
                     
                     await asyncio.sleep(0.5)
@@ -66,10 +65,7 @@ class LLMClient:
                 intentos_fallidos.append(f"{modelo}: Error de red")
                 continue
 
-        # --- LOG CRÍTICO ANTES DE MORIR ---
-        # Si llegamos aquí, nada funcionó. Imprimimos el resumen de por qué.
         logger.error(f"🚨 TODOS LOS MODELOS FALLARON. Resumen: {intentos_fallidos}")
-        
         return {
             "error": {
                 "message": "Fallo total en cascada de modelos.",

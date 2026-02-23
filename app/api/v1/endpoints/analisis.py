@@ -229,6 +229,35 @@ async def obtener_analisis_completo(analisis_id: str, db: Session = Depends(get_
         "resultado_negocio": analisis.resultado
     }
 
+@router.post("/sync-models")
+async def trigger_sync():
+    """
+    Sincroniza manualmente la lista de modelos disponibles desde OpenRouter.
+    Esto actualiza el archivo app/config/models_registry.py sin reiniciar la API.
+    """
+    try:
+        # Importamos aquí para evitar problemas de circularidad
+        import sys
+        import os
+        
+        # Aseguramos que el path de la raíz esté disponible para el import
+        sys.path.append(os.getcwd())
+        
+        from sync_models import sync_openrouter_models
+        
+        # Ejecutamos la sincronización
+        sync_openrouter_models()
+        
+        logger.info("🔄 Sincronización de modelos activada vía API")
+        return {"status": "success", "message": "Lista de modelos actualizada correctamente"}
+    
+    except Exception as e:
+        logger.error(f"❌ Error al sincronizar modelos vía API: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error al sincronizar con OpenRouter: {str(e)}"
+        )
+
 # --- ENDPOINTS DE MANTENIMIENTO (PROTEGIDOS) ---
 
 @router.post("/reset-db")
