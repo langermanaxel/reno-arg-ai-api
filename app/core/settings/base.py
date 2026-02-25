@@ -7,6 +7,7 @@ from pathlib import Path
 from ..utils.enums import EnvEnum, LogLevelEnum, SecurityAlgorithmEnum
 import logging
 
+
 class Settings(BaseSettings):
     # APP INFO
     PROJECT_NAME: str = "AI Construction Analysis API"
@@ -20,7 +21,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
-    DATABASE_ECHO: bool = False
 
     # OPENROUTER
     OPENROUTER_API_KEY: str
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
         env_ignore_empty=True,
-        validate_assignment=True
+        validate_assignment=True,
     )
 
     @property
@@ -74,4 +74,10 @@ class Settings(BaseSettings):
     def LOG_DIR(self) -> Path:
         return Path("logs")
 
+
 settings = Settings()
+
+
+def validate_settings() -> Settings:
+    """Valida y retorna la instancia de settings."""
+    return settings

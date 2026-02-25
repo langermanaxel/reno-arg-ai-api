@@ -23,10 +23,10 @@ services:
     build: .
     container_name: ai_fastapi_app
     restart: always
-    # 1. Agregamos --reload para que FastAPI detecte cambios en los archivos
+    # 1. Agregamos  para que FastAPI detecte cambios en los archivos
     command: >
       sh -c "python sync_models.py && 
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 "
     ports:
       - "8000:8000"
     environment:

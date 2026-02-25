@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 class Base(DeclarativeBase):
     """Base para todos los modelos."""
-    metadata = DeclarativeBase.metadata
     __table_args__ = {'extend_existing': True}
 
 def get_sync_sessionmaker(bind=None):

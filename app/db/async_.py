@@ -1,9 +1,11 @@
 """Async database engine."""
 
 from sqlalchemy.ext.asyncio import create_async_engine
-from app.core.config import settings
-from app.core.logging import logger
+from app.core.settings.base import settings
+from app.core.logging import get_logger
 from .base import get_async_sessionmaker
+
+logger = get_logger(__name__)
 
 def get_async_engine():
     """Engine asíncrono."""

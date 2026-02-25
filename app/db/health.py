@@ -1,9 +1,11 @@
 """Database health checks e inicialización."""
 
 from sqlalchemy.orm import Session
-from app.core.logging import logger
-from app.core.config import settings
+from app.core.logging import setup_logging
+from app.core.settings.base import settings
 from .sync import init_sync_engine, engine, SessionLocal
+
+logger = setup_logging()
 
 def init_database():
     """Inicializa database completa."""

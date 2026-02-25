@@ -2,6 +2,7 @@ AVAILABLE_MODELS = [
     "google/gemma-3-27b-it:free",
     "meta-llama/llama-3.3-70b-instruct:free",
     "mistralai/mistral-small-3.1-24b-instruct:free",
+    "liquid/lfm-2-24b-a2b",
     "openrouter/free",
     "stepfun/step-3.5-flash:free",
     "arcee-ai/trinity-large-preview:free",

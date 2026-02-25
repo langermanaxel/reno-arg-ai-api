@@ -1,9 +1,11 @@
 """Sync database engine production-ready."""
 
 from sqlalchemy import create_engine, event
-from app.core.config import settings
-from app.core.logging import logger
+from app.core.settings.base import settings
+from app.core.logging import get_logger
 from .base import get_sync_sessionmaker
+
+logger = get_logger(__name__)
 
 def get_sync_engine():
     """Engine síncrono production-ready."""

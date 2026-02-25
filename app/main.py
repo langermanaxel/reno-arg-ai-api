@@ -1,11 +1,14 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.config.settings import settings
+from app.core.settings.base import settings
 from app.core.logging import setup_logging
-from app.db.base import Base, engine
+from app.db.base import Base
+from app.db.sync import get_sync_engine
 # IMPORTANTE: Eliminamos 'mantenimiento' de aquí porque ya no existe como archivo
 from app.api.v1.endpoints import analisis, usuarios, health
+
+engine = get_sync_engine()
 
 # 1. Configuración de logs profesional
 setup_logging()
