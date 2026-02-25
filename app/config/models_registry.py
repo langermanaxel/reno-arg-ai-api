@@ -48,7 +48,6 @@ AVAILABLE_MODELS = [
     "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
     "google/gemma-3n-e2b-it:free",
     "mistralai/mistral-small-3.2-24b-instruct",
-    "deepseek/deepseek-r1-0528:free",
     "google/gemma-3n-e4b-it:free",
     "google/gemma-3n-e4b-it",
     "qwen/qwen3-4b:free",

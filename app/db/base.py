@@ -1,18 +1,31 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base
-from app.config.settings import settings
+"""SQLAlchemy 2.x Base y Session factories."""
 
-# 1. Usamos la URL desde los settings (centralizado y seguro)
-SQLALCHEMY_DATABASE_URL = settings.DATABASE_URL
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-# 2. Configuración del Engine
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+class Base(DeclarativeBase):
+    """Base para todos los modelos."""
+    metadata = DeclarativeBase.metadata
+    __table_args__ = {'extend_existing': True}
 
-# 3. Sesión local
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+def get_sync_sessionmaker(bind=None):
+    """Sync session factory."""
+    return sessionmaker(
+        bind=bind,
+        class_=Session,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )
 
-# 4. Base para los modelos
-Base = declarative_base()
-
-# NOTA: La función get_db() se ha movido a app/api/dependencies.py 
-# para seguir el estándar de organización granular del template.
+def get_async_sessionmaker(bind=None):
+    """Async session factory."""
+    from sqlalchemy.ext.asyncio import AsyncSession
+    return sessionmaker(
+        bind=bind,
+        class_=AsyncSession,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+    )

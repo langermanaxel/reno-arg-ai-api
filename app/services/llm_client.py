@@ -40,6 +40,7 @@ class LLMClient:
             }
 
             try:
+                print(payload)
                 async with httpx.AsyncClient() as client:
                     response = await client.post(
                         self.url, 
