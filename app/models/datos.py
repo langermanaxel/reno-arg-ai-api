@@ -3,12 +3,15 @@
 from sqlalchemy import Column, String, Float, Boolean, JSON, Date, ForeignKey, Index, CheckConstraint, UUID, Text, Enum, Integer
 from sqlalchemy.orm import relationship
 from app.models.core import Base, UUIDMixin, TimestampMixin
-from app.models.analisis import SnapshotRecibido
 from app.models.core import EstadoEtapa, NivelRiesgo
+
+# NOTA: HE ELIMINADO LA IMPORTACIÓN DE SnapshotRecibido DESDE AQUÍ
+# SQLAlchemy resolverá el nombre "SnapshotRecibido" dinámicamente gracias al string en la relación.
 
 class ResultadoAnalisis(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "resultado_analisis"
     
+    # Si 'analisis.id' está en otro archivo, SQLAlchemy lo encontrará por el nombre de la tabla
     analisis_id = Column(UUID(as_uuid=True), ForeignKey("analisis.id"), unique=True, index=True)
     resumen_general = Column(Text)
     score_coherencia = Column(Float, CheckConstraint('score_coherencia >= 0 AND score_coherencia <= 1'))
@@ -36,4 +39,5 @@ class DatoProyecto(Base):
     nombre = Column(String(300), nullable=False)
     responsable_tecnico = Column(String(150))
     
+    # Aquí usamos el string "SnapshotRecibido" para evitar el import circular
     snapshot = relationship("SnapshotRecibido", back_populates="proyecto")

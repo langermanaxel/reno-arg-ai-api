@@ -1,7 +1,8 @@
 from typing import Dict, Any, List
 from app.models.analisis import (
-    DatoProyecto, DatoEtapa, DatoAvance, DatoSeguridad
+        DatoEtapa, DatoAvance, DatoSeguridad
 )
+from app.models.datos import DatoProyecto
 from app.utils.helpers import normalize_item, parse_fecha
 from datetime import datetime, timezone
 

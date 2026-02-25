@@ -2,7 +2,11 @@
 
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException, status
-from app.db.base import SessionLocal, Base, engine, check_db_connection
+from app.db.base import Base
+from app.db.sync import get_sync_engine, SessionLocal
+from app.db.health import check_db_connection
+
+engine = get_sync_engine()
 
 # ========================================
 # DEPENDENCIA PRINCIPAL (Context Manager)

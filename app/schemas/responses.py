@@ -29,7 +29,7 @@ class SnapshotResponse(BaseModel):
                 "resultado_negocio": {
                     "analisis_id": "uuid-123",
                     "estado": "COMPLETADO",
-                    "detecta_riesgos": false
+                    "detecta_riesgos": False
                 }
             }
         }

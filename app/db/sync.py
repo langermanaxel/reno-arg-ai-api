@@ -17,7 +17,6 @@ def get_sync_engine():
         pool_recycle=300,
         echo=settings.DATABASE_ECHO,
         server_side_cursors=False,
-        prepare_threshold=20,
     )
     
     @event.listens_for(engine, "connect")
