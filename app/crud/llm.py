@@ -103,38 +103,61 @@ class LLMProcessor:
         ))
         self.db.flush()
 
+    # ... (tus imports actuales)
+
     def _guardar_resultados(self, invocacion: InvocacionLLM, respuesta_raw: Dict):
         """Parsea el JSON de la IA y lo mapea a las tablas de resultados técnicos."""
-        contenido_str = respuesta_raw['choices'][0]['message']['content']
-        data = parse_json_seguro(contenido_str)
-        
-        if not data:
-            logger.error("No se pudo parsear el contenido de la IA como JSON.")
-            return
+        try:
+            # Extraer contenido de forma segura
+            choices = respuesta_raw.get('choices', [])
+            if not choices:
+                logger.error("La respuesta de la IA no tiene 'choices'")
+                return
+                
+            contenido_str = choices[0].get('message', {}).get('content', '')
+            
+            # Aquí usamos tu helper
+            data = parse_json_seguro(contenido_str)
+            
+            if not data:
+                logger.error(f"Contenido no parseable para análisis {invocacion.analisis_id}. Contenido: {contenido_str[:100]}...")
+                return
 
-        # 🛡️ DEFENSA: Evitar el CheckConstraint del score_coherencia
-        # Si tu DB pide >= 50, aquí podrías forzarlo, pero lo ideal es score real >= 0
-        raw_score = data.get('score_coherencia', 0)
-        score_final = max(0, min(100, int(raw_score))) 
+            # 🛡️ DEFENSA: Mapeo seguro de score
+            # Algunos LLMs devuelven el score como string o dentro de otro objeto
+            raw_score = data.get('score_coherencia', 0)
+            try:
+                score_final = max(0, min(100, int(float(raw_score)))) 
+            except (ValueError, TypeError):
+                score_final = 0
 
-        # Crear el objeto de resultado principal
-        resultado = ResultadoAnalisis(
-            analisis_id=invocacion.analisis_id,
-            resumen_general=data.get('resumen', 'Sin resumen disponible'),
-            score_coherencia=score_final,
-            detecta_riesgos=len(data.get('riesgos', [])) > 0
-        )
-        self.db.add(resultado)
-        self.db.flush()
-        
-        # Guardar cada riesgo identificado
-        for riesgo in data.get('riesgos', []):
-            observacion = ObservacionGenerada(
-                resultado_id=resultado.id,
-                titulo=riesgo.get('titulo', 'Riesgo no titulado'),
-                descripcion=riesgo.get('descripcion', 'Sin descripción'),
-                nivel=riesgo.get('nivel', 'INFORMATIVO').upper()
+            # Crear el objeto de resultado principal
+            resultado = ResultadoAnalisis(
+                analisis_id=invocacion.analisis_id,
+                resumen_general=data.get('resumen') or data.get('resumen_general') or 'Sin resumen disponible',
+                score_coherencia=score_final,
+                detecta_riesgos=len(data.get('riesgos', [])) > 0
             )
-            self.db.add(observacion)
-        
-        self.db.flush()
+            self.db.add(resultado)
+            self.db.flush()
+            
+            # Guardar cada riesgo identificado
+            for riesgo in data.get('riesgos', []):
+                # Validar que 'nivel' sea uno de tus Enums (evita errores de DB)
+                nivel_raw = str(riesgo.get('nivel', 'INFORMATIVO')).upper()
+                # Opcional: Validar contra tu lista de EstadoAnalisis/NivelRiesgo
+                
+                observacion = ObservacionGenerada(
+                    resultado_id=resultado.id,
+                    titulo=riesgo.get('titulo', 'Riesgo no titulado'),
+                    descripcion=riesgo.get('descripcion', 'Sin descripción'),
+                    nivel=nivel_raw
+                )
+                self.db.add(observacion)
+            
+            self.db.flush()
+            
+        except Exception as e:
+            # IMPORTANTE: No lances la excepción aquí para que no rompa la auditoría
+            # pero sí regístrala en el log.
+            logger.error(f"Error parseando resultados de IA: {e}")

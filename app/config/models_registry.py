@@ -19,7 +19,6 @@ AVAILABLE_MODELS = [
     "arcee-ai/trinity-mini",
     "openai/gpt-oss-safeguard-20b",
     "nvidia/nemotron-nano-12b-v2-vl:free",
-    "nvidia/nemotron-nano-12b-v2-vl",
     "liquid/lfm2-8b-a1b",
     "liquid/lfm-2.2-6b",
     "ibm-granite/granite-4.0-h-micro",

@@ -14,6 +14,5 @@ class User(UUIDMixin, TimestampMixin, Base):
     
     __table_args__ = (
         CheckConstraint('length(username) >= 3', name='check_username_min_length'),
-        CheckConstraint('email ~* \'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$\'', 
-                       name='check_email_format'),
+        CheckConstraint(r"email ~* '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'"),
     )

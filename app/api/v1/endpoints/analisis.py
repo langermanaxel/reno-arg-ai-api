@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.schemas.snapshot import SnapshotCreate
 from app.crud.analisis import AnalisisCRUD
+from app.crud.queries import get_analisis_completo
 from app.core.logging import get_logger
 
 router = APIRouter()
@@ -71,8 +72,10 @@ async def iniciar_analisis(
 
 @router.get("/detalle/{analisis_id}")
 async def obtener_analisis_completo(analisis_id: str, db: Session = Depends(get_db)):
-    crud = AnalisisCRUD(db)
-    resultado = crud.get_analisis_completo(analisis_id)
+    # ✅ CORRECCIÓN: Llamamos a la función importada, no al método del objeto crud
+    # Asegúrate de que 'get_analisis_completo' en app.crud.queries acepte (db, id)
+    resultado = get_analisis_completo(db, analisis_id) 
+    
     if not resultado:
         raise HTTPException(status_code=404, detail="Análisis no encontrado")
     return resultado
