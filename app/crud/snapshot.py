@@ -1,5 +1,6 @@
 """Repository para snapshots y datos estructurados."""
 
+import json
 from sqlalchemy.orm import Session
 from typing import Any, Dict
 from app.models import SnapshotRecibido
@@ -21,7 +22,7 @@ class SnapshotRepository:
         # Si es Text, usar json.dumps(datos). Ajustar según el modelo.
         snapshot = SnapshotRecibido(
             analisis_id=analisis_id,
-            payload_completo=datos,  # SQLAlchemy serializa JSON automáticamente
+            payload_completo=json.dumps(datos, ensure_ascii=False),  # ← serializar explícitamente
         )
         self.db.add(snapshot)
         self.db.flush()
