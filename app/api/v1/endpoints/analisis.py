@@ -9,73 +9,100 @@ from app.core.logging import get_logger
 router = APIRouter()
 logger = get_logger(__name__)
 
-async def procesar_analisis_bg(analisis_id: str, datos: dict):
-    """
-    Tarea asíncrona de fondo. 
-    Usa await para el LLM y un bloque 'with' para la sesión síncrona de DB.
-    """
+
+async def procesar_analisis_bg(
+    analisis_id: str,
+    datos: dict,
+    model: str | None,
+    temperature: float,
+    system_prompt: str | None,
+    instrucciones_extra: str | None,
+):
     from app.crud.llm import LLMProcessor
-    from app.db.sync import SessionLocal 
+    from app.db.sync import SessionLocal
     from app.crud.analisis import AnalisisCRUD
 
-    # IMPORTANTE: Creamos la sesión dentro del proceso de fondo
     with SessionLocal() as db:
         try:
             logger.info(f"⚙️ Iniciando procesamiento IA para ID: {analisis_id}")
-            processor = LLMProcessor(db)
-            
-            # ✅ CORRECCIÓN: Ahora sí esperamos a la corrutina
-            await processor.procesar_con_ia(analisis_id, datos)
-            
+            crud = AnalisisCRUD(db)
+
+            # ✅ LÍNEA NUEVA — resuelve datos_obra.proyecto: null
+            crud.guardar_snapshot(analisis_id, datos)
+
+            await crud.llm_processor.procesar_con_ia(
+                analisis_id=analisis_id,
+                datos=datos,
+                model=model,
+                temperature=temperature,
+                system_prompt=system_prompt,
+                instrucciones_extra=instrucciones_extra,
+            )
+
+            # ✅ Marcar completado al terminar
+            crud.marcar_completado(analisis_id)
+            db.commit()
+
             logger.info(f"✅ Análisis {analisis_id} finalizado con éxito")
+
         except Exception as e:
             logger.error(f"❌ Error crítico en procesamiento: {e}")
             try:
-                # Usamos la misma sesión 'db' para persistir el error
                 crud = AnalisisCRUD(db)
                 crud.marcar_error(analisis_id, str(e))
                 db.commit()
             except Exception as db_err:
                 logger.error(f"No se pudo marcar el error en DB: {db_err}")
 
+
 @router.post("/iniciar", status_code=202)
 async def iniciar_analisis(
     snapshot_in: SnapshotCreate,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     crud = AnalisisCRUD(db)
     try:
-        # 1. Registro inicial en la DB principal del request
+        # 1. Registro inicial en DB
         analisis = crud.crear_registro_padre(snapshot_in.proyecto_codigo)
         db.commit()
         db.refresh(analisis)
-        
+
         analisis_id_str = str(analisis.id)
-        
-        # 2. Encolar la tarea síncrona
-        # FastAPI detecta que no es 'async def' y la manda al threadpool por ti
+
+        # 2. Encolar tarea de fondo con todos los parámetros LLM
+        # procesar_analisis_bg es async def → corre en el event loop (no en threadpool)
         background_tasks.add_task(
-            procesar_analisis_bg, 
-            analisis_id_str, 
-            snapshot_in.datos
+            procesar_analisis_bg,
+            analisis_id_str,
+            snapshot_in.datos,
+            snapshot_in.model,
+            snapshot_in.temperature,
+            snapshot_in.system_prompt,
+            snapshot_in.instrucciones_extra,
         )
-        
+
         return {
             "analisis_id": analisis_id_str,
-            "status": "processing"
+            "status": "processing",
+            "model": snapshot_in.model or "fallback",
+            "temperature": snapshot_in.temperature,
         }
+
     except Exception as e:
         db.rollback()
         logger.error(f"Error al iniciar: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @router.get("/detalle/{analisis_id}")
-async def obtener_analisis_completo(analisis_id: str, db: Session = Depends(get_db)):
-    # ✅ CORRECCIÓN: Llamamos a la función importada, no al método del objeto crud
-    # Asegúrate de que 'get_analisis_completo' en app.crud.queries acepte (db, id)
-    resultado = get_analisis_completo(db, analisis_id) 
-    
+async def obtener_analisis_completo(
+    analisis_id: str,
+    db: Session = Depends(get_db),
+):
+    resultado = get_analisis_completo(db, analisis_id)
+
     if not resultado:
         raise HTTPException(status_code=404, detail="Análisis no encontrado")
+
     return resultado

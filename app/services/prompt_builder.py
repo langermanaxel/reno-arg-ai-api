@@ -1,32 +1,66 @@
-import json  # <--- ESTA ES LA PIEZA QUE FALTA
+import json
+
 
 class PromptBuilder:
-    def construir_instrucciones(self, datos_entrada: dict) -> tuple:
-        # Extraer código del proyecto
-        proyecto = datos_entrada.get('proyecto', {})
-        codigo = proyecto.get('codigo') or datos_entrada.get('proyecto_codigo') or "No especificado"
-        
-        # Convertimos el dict a JSON string de forma segura
+    def construir_instrucciones(
+        self,
+        datos_entrada: dict,
+        system_prompt: str | None = None,
+        instrucciones_extra: str | None = None,
+    ) -> tuple:
+        """
+        Construye el par (system, user) para el LLM.
+
+        Args:
+            datos_entrada:      El snapshot de obra como dict.
+            system_prompt:      Reemplaza completamente el system prompt por defecto.
+                                Si no se pasa, se usa el default definido aquí.
+            instrucciones_extra: Texto adicional que se agrega al final del user prompt.
+                                Útil para variar el tipo de análisis sin tocar el core.
+        """
+
+        # --- Extracción de metadata básica ---
+        proyecto = datos_entrada.get("proyecto", {})
+        codigo = (
+            proyecto.get("codigo")
+            or datos_entrada.get("proyecto_codigo")
+            or "No especificado"
+        )
+
         try:
             datos_json = json.dumps(datos_entrada, indent=2, ensure_ascii=False)
         except Exception:
-            datos_json = str(datos_entrada) # Fallback si falla el dump
+            datos_json = str(datos_entrada)
 
-        system = """... (tu prompt agresivo) ..."""
-        
+        # --- System prompt: configurable desde afuera ---
+        system = system_prompt or (
+            "Sos analista técnico de obras. "
+            "Generás informes profesionales en formato narrativo, tono formal y objetivo. "
+            "Usá exclusivamente los datos del JSON recibido. "
+            "No inventes información. Si falta un dato, indicarlo como pendiente o no informado. "
+            "Estructura obligatoria: Proyecto, Período analizado (mes/año), "
+            "Fecha de generación (última fecha relevante), "
+            "Resumen general del estado de la obra, "
+            "Ejecución y planificación, "
+            "Medidas de seguridad y cumplimiento, "
+            "Validaciones técnicas, "
+            "Observación general. "
+            "No usar listas."
+        )
+
+        # --- User prompt: estructura fija, contenido dinámico ---
         user = f"""
-        Realiza una auditoría técnica del siguiente snapshot de obra:
-        
-        --- INICIO DE DATOS ---
-        PROYECTO: {codigo}
-        DETALLE TÉCNICO: {datos_json}
-        --- FIN DE DATOS ---
-        
-        INSTRUCCIONES DE ANÁLISIS:
-        1. Evalúa el "resumen": Un párrafo técnico detallado sobre el estado actual.
-        2. Calcula el "score_coherencia": Número entero del 0 al 100.
-        3. Identifica "riesgos": Lista de objetos con titulo, descripcion y nivel (CRITICO, ATENCION, INFORMATIVO).
-        
-        RESPONDE SOLO EL JSON:
-        """
+Realizá un informe técnico del siguiente snapshot de obra:
+
+--- INICIO DE DATOS ---
+PROYECTO: {codigo}
+DETALLE TÉCNICO:
+{datos_json}
+--- FIN DE DATOS ---
+"""
+
+        # Permite agregar instrucciones específicas por request sin romper el core
+        if instrucciones_extra:
+            user += f"\nINSTRUCCIONES ADICIONALES:\n{instrucciones_extra}\n"
+
         return system, user
