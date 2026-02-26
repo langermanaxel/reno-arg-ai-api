@@ -5,8 +5,9 @@ from typing import List, Optional
 from enum import Enum
 from pathlib import Path
 from ..utils.enums import EnvEnum, LogLevelEnum, SecurityAlgorithmEnum
-import logging
+from ..logging import get_logger
 
+logger = get_logger(__name__)
 
 class Settings(BaseSettings):
     # APP INFO
@@ -56,7 +57,7 @@ class Settings(BaseSettings):
 
     @property
     def LOGGING_LEVEL(self) -> int:
-        return getattr(logging, self.LOG_LEVEL, logging.INFO)
+        return getattr(logger, self.LOG_LEVEL, logger.INFO)
 
     @property
     def IS_DEVELOPMENT(self) -> bool:

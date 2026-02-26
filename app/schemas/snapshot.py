@@ -53,7 +53,7 @@ class SnapshotCreate(BaseModel):
         
         if len(etapas) > 100:
             raise ValueError("Máximo 100 etapas permitidas")
-        if len(advances) > 500:
+        if len(avances) > 500:
             raise ValueError("Máximo 500 registros de avance")
         
         return v

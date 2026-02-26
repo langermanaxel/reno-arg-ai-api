@@ -3,16 +3,20 @@
 from sqlalchemy.orm import Session
 from fastapi import Depends, HTTPException, status
 from app.db.base import Base
-from app.db.sync import get_sync_engine, SessionLocal
+from app.db.sync import get_sync_engine
 from app.db.health import check_db_connection
+from app.core.logging import get_logger
 
 engine = get_sync_engine()
+
+logger = get_logger(__name__)
 
 # ========================================
 # DEPENDENCIA PRINCIPAL (Context Manager)
 # ========================================
 async def get_db():
     """Dependency para endpoints sync."""
+    from app.db.sync import SessionLocal  # lazy import, ya inicializado en startup
     db = None
     try:
         db = SessionLocal()
@@ -31,6 +35,7 @@ async def get_db():
 # ========================================
 async def get_db_async():
     """Para endpoints async."""
+    from app.db.async_ import get_async_sessionmaker
     async with get_async_sessionmaker() as session:
         yield session
 

@@ -1,9 +1,9 @@
 """Validación de settings."""
 
 from app.core.settings.base import settings
-import logging
+from app.core.logging import get_logger
 
-logger = logging.getLogger("app.settings")
+logger = get_logger("app.settings")
 
 def validate_settings():
     """Valida configuración crítica."""

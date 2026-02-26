@@ -5,8 +5,9 @@ import secrets
 import string
 from passlib.exc import UnknownHashError
 from .context import get_password_context, get_global_pwd_context
+from ..logging import get_logger
 
-logger = logging.getLogger("app.security")
+logger = get_logger("app.security")
 
 def get_password_hash(password: str, legacy_context: bool = False) -> str:
     context = get_password_context() if legacy_context else get_global_pwd_context()

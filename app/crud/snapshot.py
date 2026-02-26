@@ -1,13 +1,13 @@
 """Repository para snapshots y datos estructurados."""
 
 import json
-import logging
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 from app.models import SnapshotRecibido
 from app.utils.mappers import DatosMapper
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class SnapshotRepository:
     def __init__(self, db: Session):

@@ -4,11 +4,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.settings.base import settings
 from app.core.logging import setup_logging
 from app.db.base import Base
-from app.db.sync import get_sync_engine
+from app.db.sync import get_sync_engine, init_sync_engine
 # IMPORTANTE: Eliminamos 'mantenimiento' de aquí porque ya no existe como archivo
-from app.api.v1.endpoints import analisis, usuarios, health
+from app.api.v1.endpoints import analisis, health
 
 engine = get_sync_engine()
+init_sync_engine()
 
 # 1. Configuración de logs profesional
 setup_logging()
@@ -41,7 +42,6 @@ app.add_middleware(
 # 5. Inclusión de Routers
 # El router de analisis ahora incluye internamente el endpoint /reset-db
 app.include_router(health.router, prefix=settings.API_V1_STR, tags=["Sistema"])
-app.include_router(usuarios.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Usuarios"])
 app.include_router(analisis.router, prefix=f"{settings.API_V1_STR}/analisis", tags=["Análisis y Operaciones"])
 
 # 6. Endpoint raíz de información

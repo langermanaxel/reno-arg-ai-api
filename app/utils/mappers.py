@@ -1,5 +1,5 @@
 from typing import Dict, Any, List
-from app.models.analisis import (
+from app.models.operaciones import (
         DatoEtapa, DatoAvance, DatoSeguridad
 )
 from app.models.datos import DatoProyecto

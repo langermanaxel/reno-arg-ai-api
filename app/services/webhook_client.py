@@ -1,5 +1,7 @@
 import httpx
-from app.utils.logger import logger
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class WebhookClient:
     async def notificar_finalizacion(self, analisis_id: str, proyecto_code: str, estado: str):

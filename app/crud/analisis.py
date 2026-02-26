@@ -1,14 +1,14 @@
 """AnalisisCRUD principal - Orquesta el flujo completo."""
 
-import logging
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 from .snapshot import SnapshotRepository
 from .llm import LLMProcessor
 from .webhook import WebhookNotifier
 from app.models import Analisis, EstadoAnalisis
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class AnalisisCRUD:
     def __init__(self, db: Session):

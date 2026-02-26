@@ -2,14 +2,14 @@ import os
 import sys
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
-import logging
 
 from app.api.dependencies import get_db
-from app.core.config import settings
+from app.core.settings import settings
 from app.db.base import Base
+from app.core.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 @router.post("/sync-models")
 async def trigger_sync():

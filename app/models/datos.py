@@ -14,7 +14,11 @@ class ResultadoAnalisis(UUIDMixin, TimestampMixin, Base):
     # Si 'analisis.id' está en otro archivo, SQLAlchemy lo encontrará por el nombre de la tabla
     analisis_id = Column(UUID(as_uuid=True), ForeignKey("analisis.id"), unique=True, index=True)
     resumen_general = Column(Text)
-    score_coherencia = Column(Float, CheckConstraint('score_coherencia >= 0 AND score_coherencia <= 1'))
+    score_coherencia = Column(
+        Integer, 
+        CheckConstraint('score_coherencia >= 0'),
+        nullable=True
+    )
     detecta_riesgos = Column(Boolean, default=False, index=True)
     
     analisis = relationship("Analisis", back_populates="resultado")

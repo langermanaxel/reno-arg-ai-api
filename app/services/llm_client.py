@@ -1,14 +1,16 @@
 import httpx
 import asyncio
 import json
-from app.config.settings import settings
-from app.utils.logger import logger
+from app.core.settings import settings
+from app.core.logging import get_logger
 # --- IMPORTAMOS LA LISTA SINCRONIZADA ---
 try:
     from app.config.models_registry import AVAILABLE_MODELS
 except ImportError:
     # Fallback por si el archivo aún no se genera
     AVAILABLE_MODELS = ["google/gemma-3-27b-it:free", "openrouter/free"]
+
+logger = get_logger("app.settings")
 
 class LLMClient:
     def __init__(self):

@@ -4,8 +4,9 @@ import logging
 from sqlalchemy.orm import Session
 from app.services.webhook_client import WebhookClient
 from app.models import EstadoAnalisis
+from app.core.logging import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class WebhookNotifier:
     def __init__(self, db: Session):

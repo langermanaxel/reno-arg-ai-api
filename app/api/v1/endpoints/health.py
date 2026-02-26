@@ -3,13 +3,13 @@ from sqlalchemy import text, create_engine
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime, timezone
 from pydantic import BaseModel
-import logging
 import time
 
-from app.config.settings import settings
+from app.core.settings import settings
+from app.core.logging import get_logger
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ── Mejora 5: Response model explícito ────────────────────────────────────────
