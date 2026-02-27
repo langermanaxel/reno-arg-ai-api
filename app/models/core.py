@@ -7,6 +7,7 @@ from sqlalchemy import Column, DateTime
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import declared_attr
 from app.db.base import Base
+from pydantic import BaseModel, field_validator
 
 # ========================================
 # MIXINS REUTILIZABLES

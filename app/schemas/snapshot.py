@@ -62,6 +62,20 @@ class SnapshotCreate(BaseModel):
         proyecto = v.get("proyecto", {})
         if not isinstance(proyecto, dict) or not proyecto.get("codigo"):
             raise ValueError("'proyecto.codigo' es obligatorio")
+
+        # Normalizar estados de etapas antes de que lleguen a la DB
+        estado_mapping = {
+            "EN_CURSO":    "en_ejecucion",
+            "en_curso":    "en_ejecucion",
+            "EN_EJECUCION": "en_ejecucion",
+            "PLANIFICADA": "planificada",
+            "FINALIZADA":  "finalizada",
+            "PAUSADA":     "pausada",
+        }
+        for etapa in v.get("etapas", []):
+            if isinstance(etapa, dict) and "estado" in etapa:
+                etapa["estado"] = estado_mapping.get(etapa["estado"], etapa["estado"].lower())
+
         return v
 
     @field_validator("datos")

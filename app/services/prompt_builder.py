@@ -35,17 +35,19 @@ class PromptBuilder:
         # --- System prompt: configurable desde afuera ---
         system = system_prompt or (
             "Sos analista técnico de obras. "
-            "Generás informes profesionales en formato narrativo, tono formal y objetivo. "
+            "Respondé ÚNICAMENTE con un JSON válido, sin texto adicional, sin markdown, sin backticks. "
+            "Estructura obligatoria exacta:\n"
+            "{\n"
+            '  "resumen_general": "Informe narrativo completo en tono formal. Incluir: estado general, ejecución y planificación, seguridad y cumplimiento, validaciones técnicas, observación final.",\n'
+            '  "score_coherencia": <número entre 0 y 100 que refleja coherencia y completitud de los datos>,\n'
+            '  "detecta_riesgos": <true o false>,\n'
+            '  "riesgos": [\n'
+            '    {"titulo": "...", "descripcion": "...", "nivel": "informativo|atencion|critico"}\n'
+            '  ]\n'
+            "}\n"
             "Usá exclusivamente los datos del JSON recibido. "
-            "No inventes información. Si falta un dato, indicarlo como pendiente o no informado. "
-            "Estructura obligatoria: Proyecto, Período analizado (mes/año), "
-            "Fecha de generación (última fecha relevante), "
-            "Resumen general del estado de la obra, "
-            "Ejecución y planificación, "
-            "Medidas de seguridad y cumplimiento, "
-            "Validaciones técnicas, "
-            "Observación general. "
-            "No usar listas."
+            "No inventes información. Si falta un dato, indicarlo como 'no informado' dentro del resumen_general. "
+            "Si no hay riesgos, devolver riesgos como array vacío []."
         )
 
         # --- User prompt: estructura fija, contenido dinámico ---

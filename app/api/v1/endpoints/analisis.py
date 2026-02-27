@@ -20,14 +20,11 @@ async def procesar_analisis_bg(
 ):
     from app.crud.llm import LLMProcessor
     from app.db.sync import SessionLocal
-    from app.crud.analisis import AnalisisCRUD
 
     with SessionLocal() as db:
+        crud = AnalisisCRUD(db)  # ← fuera del try
         try:
             logger.info(f"⚙️ Iniciando procesamiento IA para ID: {analisis_id}")
-            crud = AnalisisCRUD(db)
-
-            # ✅ LÍNEA NUEVA — resuelve datos_obra.proyecto: null
             crud.guardar_snapshot(analisis_id, datos)
 
             await crud.llm_processor.procesar_con_ia(
@@ -39,16 +36,13 @@ async def procesar_analisis_bg(
                 instrucciones_extra=instrucciones_extra,
             )
 
-            # ✅ Marcar completado al terminar
             crud.marcar_completado(analisis_id)
             db.commit()
-
             logger.info(f"✅ Análisis {analisis_id} finalizado con éxito")
 
         except Exception as e:
-            logger.error(f"❌ Error crítico en procesamiento: {e}")
+            logger.error(f"❌ Error crítico en procesamiento: {e}", exc_info=True)
             try:
-                crud = AnalisisCRUD(db)
                 crud.marcar_error(analisis_id, str(e))
                 db.commit()
             except Exception as db_err:
