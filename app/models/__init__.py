@@ -1,24 +1,41 @@
-"""Exporta todos los modelos para fácil importación."""
-
-from .core import (
-    UUIDMixin, TimestampMixin, EstadoAnalisis, 
-    EstadoEtapa, NivelRiesgo
+from app.db import Base, engine
+# Importar todos los modelos para que Base.metadata los registre
+from .enums import EstadoAnalisis, CategoriaObservacion, NivelObservacion
+from .analysis import Analisis
+from .snapshot import (
+    SnapshotRecibido, DatoProyecto, DatoEtapa, 
+    DatoAvance, DatoSeguridad, DatoValidacion
 )
-from .analisis import Analisis, SnapshotRecibido
-from .datos import (
-    ResultadoAnalisis, ObservacionGenerada, 
-    DatoProyecto
-)
-from .operaciones import DatoEtapa, DatoAvance, DatoSeguridad
-from .auditoria import InvocacionLLM, PromptGenerado, RespuestaLLM
-from .auth import User
+from .ai_process import InvocacionLLM, PromptGenerado, RespuestaLLM
+from .results import ResultadoAnalisis, ObservacionGenerada
 
+# Helpers para inicialización
+def init_db(engine):
+    Base.metadata.create_all(bind=engine)
+    print("✅ Base de datos inicializada: Tablas creadas.")
+
+def drop_all(engine):
+    Base.metadata.drop_all(bind=engine)
+    print("⚠️  Base de datos reseteada: Tablas eliminadas.")
+
+# Exportar todo lo que necesites usar externamente
 __all__ = [
-    "UUIDMixin", "TimestampMixin",
-    "EstadoAnalisis", "EstadoEtapa", "NivelRiesgo",
-    "Analisis", "SnapshotRecibido",
-    "ResultadoAnalisis", "ObservacionGenerada",
-    "DatoProyecto", "DatoEtapa", "DatoAvance", "DatoSeguridad",
-    "InvocacionLLM", "PromptGenerado", "RespuestaLLM",
-    "User"
+    "Base",
+    "Analisis",
+    "SnapshotRecibido",
+    "DatoProyecto",
+    "DatoEtapa",
+    "DatoAvance",
+    "DatoSeguridad",
+    "DatoValidacion",
+    "InvocacionLLM",
+    "PromptGenerado",
+    "RespuestaLLM",
+    "ResultadoAnalisis",
+    "ObservacionGenerada",
+    "EstadoAnalisis",
+    "CategoriaObservacion",
+    "NivelObservacion",
+    "init_db",
+    "drop_all"
 ]

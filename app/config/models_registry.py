@@ -1,3 +1,4 @@
+# Archivo generado automáticamente por sync_models.py
 AVAILABLE_MODELS = [
     "google/gemma-3-27b-it:free",
     "meta-llama/llama-3.3-70b-instruct:free",

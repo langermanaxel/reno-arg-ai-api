@@ -1,33 +1,49 @@
+import logging
 from sqlalchemy.orm import Session
-from app.models.analisis import Analisis, SnapshotRecibido, EstadoAnalisis
-from app.schemas.snapshot import SnapshotCreate
-import json
+from uuid import UUID
 
-class AnalisisService:
-    def __init__(self, db: Session):
-        self.db = db
+from app.schemas.analisis import AnalisisCreate
+from app.schemas.snapshot import SnapshotInput
+from app.crud import crud_analisis
+from app.models.enums import EstadoAnalisis
+from app.utils.hashing import generar_hash_payload
+from app.core.exceptions import AnalisisNotFoundError
+from app.services.ai_engine import AIEngineService
 
-    def crear_analisis(self, datos: SnapshotCreate) -> Analisis:
-        # 1. Crear la entidad Analisis
-        nuevo_analisis = Analisis(
-            proyecto_codigo=datos.proyecto.proyecto_codigo,
-            estado=EstadoAnalisis.PENDIENTE
-        )
-        self.db.add(nuevo_analisis)
-        self.db.flush() # Para obtener el ID generado
+logger = logging.getLogger("analisis_service")
 
-        # 2. Guardar el Snapshot (Inmutabilidad)
-        # Convertimos el objeto Pydantic a JSON string para guardarlo
-        payload_str = json.dumps(datos.model_dump(), default=str)
+def iniciar_nuevo_analisis(db: Session, datos: AnalisisCreate) -> UUID:
+    """Crea el registro inicial del análisis"""
+    nuevo_analisis = crud_analisis.create_analisis(db, datos)
+    return nuevo_analisis.id
+
+async def procesar_snapshot_con_ia(db: Session, analisis_id: UUID, snapshot: SnapshotInput):
+    """
+    Orquestador que coordina el flujo de datos y la IA.
+    """
+    analisis = crud_analisis.get_analisis(db, analisis_id)
+    if not analisis:
+        logger.error(f"Análisis {analisis_id} no encontrado.")
+        return
+
+    crud_analisis.update_estado(db, analisis_id, EstadoAnalisis.PROCESANDO)
+
+    try:
+        # ✅ CORRECCIÓN: Usar mode='json' para que las fechas sean strings antes del hash
+        snapshot_serializable = snapshot.model_dump(mode='json')
+        payload_hash = generar_hash_payload(snapshot_serializable)
         
-        snapshot = SnapshotRecibido(
-            analisis_id=nuevo_analisis.id,
-            payload_completo=payload_str
-        )
-        self.db.add(snapshot)
+        logger.info(f"Procesando snapshot {analisis_id} con hash: {payload_hash}")
+
+        # Invocación al Motor de IA
+        ai_engine = AIEngineService(db)
+        await ai_engine.procesar_analisis_completo(analisis_id, snapshot)
+
+    except Exception as e:
+        # ✅ CORRECCIÓN: Usar str(e) para evitar errores de serialización en el log
+        error_msg = str(e)
+        logger.error(f"Error crítico en la orquestación del análisis {analisis_id}: {error_msg}")
         
-        # 3. Commit de la transacción
-        self.db.commit()
-        self.db.refresh(nuevo_analisis)
-        
-        return nuevo_analisis
+        # Aseguramos que el estado cambie a ERROR en la DB
+        crud_analisis.update_estado(db, analisis_id, EstadoAnalisis.ERROR)
+        db.commit()

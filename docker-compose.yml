@@ -23,10 +23,10 @@ services:
     build: .
     container_name: ai_fastapi_app
     restart: always
-    # 1. Agregamos  para que FastAPI detecte cambios en los archivos
+    # CORRECCIÓN: Ruta de main corregida y agregado --reload para desarrollo
     command: >
       sh -c "python sync_models.py && 
-             uvicorn app.main:app --host 0.0.0.0 --port 8000 "
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     ports:
       - "8000:8000"
     environment:
@@ -34,15 +34,15 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
     env_file:
       - .env
-    # 2. MAPEAMOS TU CARPETA LOCAL CON LA DEL CONTENEDOR
     volumes:
       - .:/app
-      - /app/.venv
+      - /app/.venv # Evita que el volumen pise el venv del contenedor
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      # Ajustado a la ruta de salud que definimos en main.py
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3

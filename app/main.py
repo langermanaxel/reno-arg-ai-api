@@ -1,56 +1,72 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
-from app.core.settings.base import settings
-from app.core.logging import setup_logging
-from app.db.base import Base
-from app.db.sync import get_sync_engine, init_sync_engine
-# IMPORTANTE: Eliminamos 'mantenimiento' de aquí porque ya no existe como archivo
-from app.api.v1.endpoints import analisis, health
+# Importamos desde nuestra estructura modularizada
+from app.config import settings
+from app.routers import api_router
+from app.db import engine
+from app.models import init_db
+from app.core.exceptions import AnalisisNotFoundError, IAProcessingError
 
-engine = get_sync_engine()
-init_sync_engine()
-
-# 1. Configuración de logs profesional
-setup_logging()
-
-# 2. Sincronización de Base de Datos
-# Crea las tablas en Postgres si no existen basándose en los modelos
-try:
-    Base.metadata.create_all(bind=engine)
-except Exception as e:
-    # Evita que la app muera si la DB tarda unos segundos en arrancar
-    print(f"⚠️ Error al conectar o sincronizar la DB: {e}")
-
-# 3. Inicialización de FastAPI
+# ═══════════════════════════════════════════════════════════════════
+# 1. INICIALIZACIÓN DE FASTAPI
+# ═══════════════════════════════════════════════════════════════════
 app = FastAPI(
-    title=settings.PROJECT_NAME,
-    version=settings.VERSION,
-    description="API profesional para análisis de obras con auditoría LLM.",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json"
+    title=settings.app_name,
+    version="1.0.0",
+    description="API para procesamiento de análisis de obras con Inteligencia Artificial."
 )
 
-# 4. Configuración de CORS
+# ═══════════════════════════════════════════════════════════════════
+# 2. CONFIGURACIÓN DE CORS (Seguridad Frontend-Backend)
+# ═══════════════════════════════════════════════════════════════════
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(origin) for origin in settings.CORS_ORIGINS],
+    allow_origins=["*"],  # ¡Ojo! En producción cambiar por los dominios permitidos
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# 5. Inclusión de Routers
-# El router de analisis ahora incluye internamente el endpoint /reset-db
-app.include_router(health.router, prefix=settings.API_V1_STR, tags=["Sistema"])
-app.include_router(analisis.router, prefix=f"{settings.API_V1_STR}/analisis", tags=["Análisis y Operaciones"])
+# ═══════════════════════════════════════════════════════════════════
+# 3. EVENTOS DE CICLO DE VIDA (Startup)
+# ═══════════════════════════════════════════════════════════════════
+@app.on_event("startup")
+def startup_event():
+    """
+    Se ejecuta justo antes de que el servidor empiece a recibir peticiones.
+    Ideal para inicializar la base de datos.
+    """
+    init_db(engine)
+    print(f"🚀 {settings.app_name} iniciado correctamente.")
+    print(f"⚙️  Modo Debug: {settings.debug_mode}")
 
-# 6. Endpoint raíz de información
-@app.get("/", tags=["Sistema"])
-def read_root():
-    return {
-        "status": "API Online 🚀", 
-        "environment": settings.ENV,
-        "version": settings.VERSION,
-        "docs": "/docs",
-        "health": f"{settings.API_V1_STR}/health"
-    }
+# ═══════════════════════════════════════════════════════════════════
+# 4. MANEJO GLOBAL DE EXCEPCIONES (Core)
+# ═══════════════════════════════════════════════════════════════════
+@app.exception_handler(AnalisisNotFoundError)
+async def analisis_not_found_handler(request: Request, exc: AnalisisNotFoundError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": "Not Found", "mensaje": exc.detail},
+    )
+
+@app.exception_handler(IAProcessingError)
+async def ia_processing_error_handler(request: Request, exc: IAProcessingError):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": "Internal Server Error", "mensaje": exc.detail},
+    )
+
+# ═══════════════════════════════════════════════════════════════════
+# 5. REGISTRO DE RUTAS (Endpoints)
+# ═══════════════════════════════════════════════════════════════════
+# Incluimos el router central de app/routers/__init__.py
+app.include_router(api_router, prefix="/api/v1")
+
+# Endpoint de salud (Health Check) para monitoreo
+@app.get("/health", tags=["Sistema"])
+def health_check():
+    """Endpoint básico para verificar que el servidor está vivo."""
+    return {"status": "ok", "app": settings.app_name}

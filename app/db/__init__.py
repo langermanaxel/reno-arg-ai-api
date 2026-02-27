@@ -1,20 +1,12 @@
-"""Database package - fácil importación."""
+from .database import Base, SessionLocal, engine
 
-from .base import Base, get_sync_sessionmaker, get_async_sessionmaker
-from .health import check_db_connection, init_database, create_tables, drop_tables
-from .sync import get_sync_engine, init_sync_engine
-from .async_ import get_async_engine, init_async_engine
+def get_db():
+    """Dependencia para obtener la sesión de DB en FastAPI"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-__all__ = [
-    "Base",
-    "get_sync_sessionmaker",
-    "get_async_sessionmaker",
-    "create_tables",
-    "drop_tables",  
-    "check_db_connection", 
-    "init_database", 
-    "get_sync_engine",
-    "init_sync_engine",
-    "get_async_engine",
-    "init_async_engine"
-    ]
+# Al ponerlos aquí, puedes importar directamente desde 'app.db'
+__all__ = ["Base", "engine", "get_db"]
