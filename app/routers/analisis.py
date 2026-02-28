@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, BackgroundTasks, status
 from sqlalchemy.orm import Session
 from uuid import UUID
 
-from app.db import get_db
+from app.db import get_db, SessionLocal
 from app.schemas.analisis import AnalisisCreate, AnalisisOut
 from app.schemas.snapshot import SnapshotInput
 from app.services import analisis_service
@@ -27,22 +27,23 @@ def procesar_datos(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
-    """
-    Recibe el Snapshot completo del Backend Principal y envía el 
-    procesamiento de IA a una tarea en segundo plano (Background Task).
-    """
     analisis = crud_analisis.get_analisis(db, analisis_id)
     if not analisis:
         raise AnalisisNotFoundError(str(analisis_id))
-    
-    # Procesamos la IA en background para no bloquear la respuesta HTTP
-    background_tasks.add_task(
-        analisis_service.procesar_snapshot_con_ia, 
-        db, 
-        analisis_id, 
-        snapshot
-    )
-    
+
+    # ✅ El background task crea y gestiona su propia sesión
+    def tarea():
+        db_bg = SessionLocal()
+        try:
+            import asyncio
+            asyncio.run(
+                analisis_service.procesar_snapshot_con_ia(db_bg, analisis_id, snapshot)
+            )
+        finally:
+            db_bg.close()
+
+    background_tasks.add_task(tarea)
+
     return {"mensaje": "Procesamiento de IA iniciado en segundo plano", "analisis_id": analisis_id}
 
 @router.get("/{analisis_id}", response_model=AnalisisOut)
