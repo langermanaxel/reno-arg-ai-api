@@ -1,114 +1,80 @@
 """Schema principal SnapshotCreate + validadores."""
 
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Dict, Any, Optional
+from typing import List
+from datetime import date
+from enum import Enum
 import re
+
+class EstadoEtapa(str, Enum):
+    EN_CURSO = "EN_CURSO"
+    FINALIZADA = "FINALIZADA"
+    PENDIENTE = "PENDIENTE"
+
+
+class Project(BaseModel):
+    codigo: str = Field(..., min_length=5)
+    nombre: str
+    responsable_tecnico: str
+
+
+class Periodo(BaseModel):
+    desde: date
+    hasta: date
+
+    @model_validator(mode="after")
+    def validar_rango_fechas(self):
+        if self.hasta < self.desde:
+            raise ValueError("La fecha 'hasta' no puede ser anterior a 'desde'")
+        return self
+
+
+class Etapa(BaseModel):
+    nombre: str
+    estado: EstadoEtapa
+    avance_estimado: int = Field(ge=0, le=100)
+
+
+class RegistroAvance(BaseModel):
+    fecha: date
+    supervisor: str
+    tareas_ejecutadas: List[str]
+    oficios_activos: List[str]
+    porcentaje_avance: int = Field(ge=0, le=100)
+
+
+class CoberturaART(BaseModel):
+    entidad: str
+    vigencia: str
+
+
+class MedidasSeguridad(BaseModel):
+    fecha: date
+    implementadas: List[str]
+    cobertura_art: CoberturaART
+
+
+class ValidacionTecnica(BaseModel):
+    fecha: date
+    estado: EstadoEtapa
+    etapa: str
+    responsable: str
 
 
 class SnapshotCreate(BaseModel):
     """Snapshot de proyecto para análisis IA."""
 
-    proyecto_codigo: str = Field(
-        ...,
-        min_length=3,
-        max_length=50,
-        description="Código único del proyecto",
-        example="RENO-AR-2026-014",
-    )
+    project: Project
+    periodo: Periodo
+    etapas: Etapa
+    registros_avance: RegistroAvance
+    medidas_seguridad: MedidasSeguridad
+    validaciones_tecnicas: ValidacionTecnica
 
-    datos: Dict[str, Any] = Field(
-        ...,
-        description="Datos estructurados del proyecto",
-    )
-
-    # --- Campos LLM configurables por request ---
-    model: Optional[str] = Field(
-        default=None,
-        description="Modelo LLM a usar. Si no se especifica, usa el fallback configurado.",
-        example="openai/gpt-4o-mini",
-    )
-
-    temperature: float = Field(
-        default=0.3,
-        ge=0.0,
-        le=2.0,
-        description="Temperatura del modelo. Default 0.3 para respuestas consistentes.",
-    )
-
-    system_prompt: Optional[str] = Field(
-        default=None,
-        description="System prompt personalizado. Si no se especifica, usa el default del PromptBuilder.",
-    )
-
-    instrucciones_extra: Optional[str] = Field(
-        default=None,
-        description="Instrucciones adicionales que se agregan al user prompt.",
-    )
-
-    @field_validator("proyecto_codigo")
+    @field_validator("project")
     @classmethod
-    def validate_proyecto_codigo(cls, v: str) -> str:
-        # Normalizamos primero, validamos después
-        v = v.strip().upper()
-        if not re.match(r"^[A-Z0-9_-]+$", v):
-            raise ValueError("Solo letras, números, guiones y guiones bajos")
-        return v
-
-    @field_validator("datos")
-    @classmethod
-    def validate_datos_estructura(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        if "proyecto" not in v:
-            raise ValueError("'proyecto' es obligatorio en datos")
-        proyecto = v.get("proyecto", {})
-        if not isinstance(proyecto, dict) or not proyecto.get("codigo"):
-            raise ValueError("'proyecto.codigo' es obligatorio")
-        return v
-
-    @field_validator("datos")
-    @classmethod
-    def validate_datos_coherencia(cls, v: Dict[str, Any]) -> Dict[str, Any]:
-        if len(v.get("etapas", [])) > 100:
-            raise ValueError("Máximo 100 etapas permitidas")
-        if len(v.get("registros_avance", [])) > 500:
-            raise ValueError("Máximo 500 registros de avance")
-        return v
-
-    @model_validator(mode="after")
-    def sincronizar_proyecto_codigo(self) -> "SnapshotCreate":
-        """Garantiza que proyecto_codigo y datos.proyecto.codigo sean iguales."""
-        codigo_datos = self.datos.get("proyecto", {}).get("codigo", "").upper()
-        if codigo_datos and codigo_datos != self.proyecto_codigo:
-            raise ValueError(
-                f"proyecto_codigo '{self.proyecto_codigo}' no coincide "
-                f"con datos.proyecto.codigo '{codigo_datos}'"
-            )
-        return self
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "proyecto_codigo": "RENO-AR-2026-014",
-                    "model": "openai/gpt-4o-mini",
-                    "temperature": 0.3,
-                    "system_prompt": None,
-                    "instrucciones_extra": None,
-                    "datos": {
-                        "proyecto": {
-                            "codigo": "RENO-AR-2026-014",
-                            "nombre": "Reforma vivienda unifamiliar Barrio Caballito",
-                        },
-                        "etapas": [
-                            {
-                                "nombre": "Obra gruesa",
-                                "estado": "EN_CURSO",
-                                "avance_estimado": 45,
-                            }
-                        ],
-                    },
-                }
-            ]
-        },
-        "validate_assignment": True,
-        "arbitrary_types_allowed": True,
-    }
+    def validar_codigo_proyecto(cls, value):
+        patron = r"^[A-Z]+-[A-Z]{2}-\d{4}-\d{3}$"
+        if not re.match(patron, value.codigo):
+            raise ValueError("Formato de código de proyecto inválido")
+        return value
