@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 from app.api.dependencies import get_db
 from app.schemas.snapshot import SnapshotCreate
@@ -6,92 +7,117 @@ from app.crud.analisis import AnalisisCRUD
 from app.crud.queries import get_analisis_completo
 from app.core.logging import get_logger
 
+from app.core.settings.base import settings
+
+import uuid
+import random
+
+import json
+import logging
+
+
 router = APIRouter()
-logger = get_logger(__name__)
+
+DEFAULT_MODEL = "openai/gpt-4o-mini"
+DEFAULT_TEMPERATURE = 0.3
+
+logger = logging.getLogger(__name__)
 
 
-async def procesar_analisis_bg(
+SYSTEM_PROMPT_DICT = {
+    "role": "system",
+    "content": (
+        "Sos analista técnico de obras. "
+        "Generás informes profesionales en formato narrativo, tono formal y objetivo. "
+        "Usá exclusivamente los datos del JSON recibido. "
+        "No inventes información. "
+        "Si falta un dato, indicarlo como pendiente o no informado. "
+        "Estructura obligatoria: "
+        "Proyecto, Período analizado (mes/año), Fecha de generación (última fecha relevante), "
+        "Resumen general del estado de la obra, Ejecución y planificación, "
+        "Medidas de seguridad y cumplimiento, Validaciones técnicas, Observación general. "
+        "No usar listas. "
+        "Retornar estrictamente un único JSON válido."
+    ),
+}
+
+
+async def procesar_analisis(
     analisis_id: str,
     datos: dict,
-    model: str | None,
-    temperature: float,
-    system_prompt: str | None,
-    instrucciones_extra: str | None,
+    db: Session,
+    model: str = DEFAULT_MODEL,
 ):
-    from app.crud.llm import LLMProcessor
-    from app.db.sync import SessionLocal
-    from app.crud.analisis import AnalisisCRUD
+    crud = AnalisisCRUD(db)
+    temperature = DEFAULT_TEMPERATURE
 
-    with SessionLocal() as db:
-        try:
-            logger.info(f"⚙️ Iniciando procesamiento IA para ID: {analisis_id}")
-            crud = AnalisisCRUD(db)
+    try:
+        # Guardar snapshot original
+        crud.guardar_snapshot(analisis_id, datos)
 
-            # ✅ LÍNEA NUEVA — resuelve datos_obra.proyecto: null
-            crud.guardar_snapshot(analisis_id, datos)
+        # Asegurar que datos sean 100% serializables
+        datos_json_safe = json.dumps(
+            jsonable_encoder(datos),
+            ensure_ascii=False,
+        )
+        messages = [
+            SYSTEM_PROMPT_DICT,
+            {
+                "role": "user",
+                "content": datos_json_safe,
+            },
+        ]
+        respuesta_ia = await crud.llm_processor.procesar_con_ia(
+            analisis_id=analisis_id,
+            messages=messages,
+            model=model,
+            temperature=temperature,
+        )
+        crud.marcar_completado(analisis_id)
+        db.commit()
 
-            await crud.llm_processor.procesar_con_ia(
-                analisis_id=analisis_id,
-                datos=datos,
-                model=model,
-                temperature=temperature,
-                system_prompt=system_prompt,
-                instrucciones_extra=instrucciones_extra,
-            )
+        return respuesta_ia
 
-            # ✅ Marcar completado al terminar
-            crud.marcar_completado(analisis_id)
-            db.commit()
-
-            logger.info(f"✅ Análisis {analisis_id} finalizado con éxito")
-
-        except Exception as e:
-            logger.error(f"❌ Error crítico en procesamiento: {e}")
-            try:
-                crud = AnalisisCRUD(db)
-                crud.marcar_error(analisis_id, str(e))
-                db.commit()
-            except Exception as db_err:
-                logger.error(f"No se pudo marcar el error en DB: {db_err}")
+    except Exception as e:
+        db.rollback()
+        crud.marcar_error(analisis_id, str(e))
+        db.commit()
+        raise
 
 
-@router.post("/iniciar", status_code=202)
+@router.post("/iniciar", status_code=200)
 async def iniciar_analisis(
     snapshot_in: SnapshotCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     crud = AnalisisCRUD(db)
+
     try:
-        # 1. Registro inicial en DB
-        analisis = crud.crear_registro_padre(snapshot_in.proyecto_codigo)
+        # Crear registro padre
+        analisis = crud.crear_registro_padre(snapshot_in.project.codigo)
         db.commit()
         db.refresh(analisis)
 
-        analisis_id_str = str(analisis.id)
+        analisis_id = str(analisis.id)
 
-        # 2. Encolar tarea de fondo con todos los parámetros LLM
-        # procesar_analisis_bg es async def → corre en el event loop (no en threadpool)
-        background_tasks.add_task(
-            procesar_analisis_bg,
-            analisis_id_str,
-            snapshot_in.datos,
-            snapshot_in.model,
-            snapshot_in.temperature,
-            snapshot_in.system_prompt,
-            snapshot_in.instrucciones_extra,
+        # Convertir Pydantic → dict JSON-safe
+        datos_dict = jsonable_encoder(snapshot_in)
+
+        # Procesar IA sincrónicamente
+        resultado = await procesar_analisis(
+            analisis_id=analisis_id,
+            datos=datos_dict,
+            db=db,
         )
 
         return {
-            "analisis_id": analisis_id_str,
-            "status": "processing",
-            "model": snapshot_in.model or "fallback",
-            "temperature": snapshot_in.temperature,
+            "analisis_id": analisis_id,
+            "status": "completed",
+            "resultado": resultado,
         }
 
     except Exception as e:
         db.rollback()
-        logger.error(f"Error al iniciar: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
